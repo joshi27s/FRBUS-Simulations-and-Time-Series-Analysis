@@ -1,4 +1,54 @@
-' Program that simulates the impact of a lower labor force participation rate with ZLB under VAR
+' Program for simulation under VAR expectations that illustrates how
+' to set the monetary policy options that impose the zero lower bound
+' on the funds rate and delay the liftoff of the funds rate from the
+' ZLB until either the unemployment rate falls below a threshold or
+' inflation rises above a threshold.
+'
+' See FRB/US Simulation Basics document for general information about
+' this program.
+
+' Additional notes:
+
+' 1. The scenario involves a set of negative aggregate demand 
+' shocks and a positive risk premium shock that start in 2003q3,
+' when the baseline (historical) funds rate is about one percent.
+' The shocks are equal to the equation errors actually observed
+' in the four quarters starting in 2008q4.
+
+' 2. To impose the ZLB set %zb = "yes" (rather than "no")
+
+' 3. To impose the policy liftfoff threshold conditions set both
+' %zb = "yes" and %threshold = "yes".  For illustrative purposes
+' and reflecting the baseline conditions in 2003 and the years
+' that immediately follow, the inflation threshold is set to 3.0
+' and the unemployment threshold is set to 7.0, subject to the
+' the adjustments described next.
+
+' 4. Because the threshold conditions only make sense once the ZLB is
+' binding, unemployment is above its threshold level (lurtrsh),
+' and inflation is below its threshold (pitrsh), which is not the
+' case in the initial simulation quarters, the program turns on the
+' threshold code (using dmptrsh) in the 5th simulation quarter,
+' at which point these conditions hold. In addition, for the threshold 
+' code to work properly, the endogenous switch variable dmptr must be 
+' zero in the quarter prior to the quarter in which the threshold code is 
+' turned on.  This is accomplished by setting the baseline data on dmptr 
+' to zero and by setting the unemployment and inflation thresholds
+' (lurtrsh, pitrsh) to values in the first four simulation quarters that
+' would not flip the dmptr switch to one. 
+
+' 4. Choose one of the five available policy rules by setting
+' %policy to one of rffintay, rfftay, rfftlr, rffalt, or rffgen.
+
+' 5. If neither the ZLB or thresholds are imposed, the monetary policy
+' equations have baseline-tracking adds and the simulation is
+' a standard deviations-from-baseline exercise. 
+
+' 6. If either the ZLB or thresholds are imposed, the add factors on 
+' monetary policy equations are set to zero after the tracking adds
+' are computed so that the ZLB and threshold conditions are based on the
+' actual simulated outcomes for the funds rate and inflation and unemployment,
+' not their deviations from baseline. 
 
 ' *************************************************************
 ' Initial filename and parameter settings
@@ -20,8 +70,9 @@
 
 ' Input database
 %dbin  = "..\data\longbase"
+
 ' Simulation start and length
-  %simstart = "2020q2"
+  %simstart = "2012q3"
   !nsimqtrs = 16*4  
  call dateshift(%simstart,%simend,!nsimqtrs-1)
 
@@ -78,6 +129,7 @@
     dmptrsh = 1
     lurtrsh = 6.5
     pitrsh = 2.5
+    'ecitrsh = 3.5
 
     smpl @all
     else
@@ -112,7 +164,7 @@
 
 ' Assign baseline tracking add factors
   %suftrk = "_0"
-  smpl %simstart 2020q2
+  smpl %simstart 2012q3
   {%varmod}.addassign @all
   {%varmod}.addinit(v=n) @all
   {%varmod}.scenario(n,a={%suftrk}) "track"
@@ -150,20 +202,19 @@
 
   %sufsim = "_1"
   {%varmod}.scenario(n,a={%sufsim}) "sim"
- 
+
 
   smpl @all
   call set_mp("dmpintay")
- %policy = "rffintay"
-
+  %policy = "rffintay"
 
 ' Set fiscal policy
   smpl @all
-  'call set_fp("dfpdbt")
+ ' call set_fp("dfpdbt")
 call set_fp("dfpsrp")
 
   smpl %simstart %simstart
- lfpr_aerr = lfpr_aerr - 0.02
+ lfpr_aerr = lfpr_aerr - 0.001
 
  dmptrsh = 1
 dmptmax = 1 
@@ -179,26 +230,24 @@ dmptmax = 1
 
 
 ' *************************************************************************************************
-' Sim 2 :Lower lfpr and Taylor rule after crossing ecitrsh
+' Sim 2 : Lower lfpr and Taylor rule after crossing pitrsh
 ' *************************************************************************************************
 
   %sufsim1 = "_2"
   {%varmod}.scenario(n,a={%sufsim1}) "sim2"
- 
+
 
   smpl @all
   call set_mp("dmptay")
- %policy = "rfftay"
-
+  %policy = "rfftay"
 
 ' Set fiscal policy
   smpl @all
 'call set_fp("dfpex")
-  call set_fp("dfpsrp")
+  call set_fp("dfpdbt")
 
   smpl %simstart %simstart
  lfpr_aerr = lfpr_aerr - 0.001
-
 
 
 {%varmod}.drop dmptmax 
@@ -257,8 +306,8 @@ dmptmax = 1
 ' Make a graph
 '***********************************************************
 
-  call dateshift(%simstart,%graphstart,-5)
-  call dateshift(%simstart,%graphend, 14)
+  call dateshift(%simstart,%graphstart,-8)
+  call dateshift(%simstart,%graphend, 21)
 
 
 smpl %graphstart %graphend
@@ -371,7 +420,7 @@ smpl %graphstart %graphend
 
 
 
-  %title = "Macroeconomic Effects of a Lower Labor Force Participation Rate\r(VAR Expectations"
+  %title = "Macroeconomic Effects of a 2% Lower Labor Force Participation Rate\r(VAR Expectations"
   %title = %title + "; Policy = " + %policy + ")"
   if %zb = "yes" and %threshold = "no" then
     %title = %title + "\r(ZLB Imposed)"
