@@ -1,4 +1,54 @@
-' VAR Simulation of unanchored inflation expectations under ZLB
+' Program for simulation under VAR expectations that illustrates how
+' to set the monetary policy options that impose the zero lower bound
+' on the funds rate and delay the liftoff of the funds rate from the
+' ZLB until either the unemployment rate falls below a threshold or
+' inflation rises above a threshold.
+'
+' See FRB/US Simulation Basics document for general information about
+' this program.
+
+' Additional notes:
+
+' 1. The scenario involves a set of negative aggregate demand 
+' shocks and a positive risk premium shock that start in 2003q3,
+' when the baseline (historical) funds rate is about one percent.
+' The shocks are equal to the equation errors actually observed
+' in the four quarters starting in 2008q4.
+
+' 2. To impose the ZLB set %zb = "yes" (rather than "no")
+
+' 3. To impose the policy liftfoff threshold conditions set both
+' %zb = "yes" and %threshold = "yes".  For illustrative purposes
+' and reflecting the baseline conditions in 2003 and the years
+' that immediately follow, the inflation threshold is set to 3.0
+' and the unemployment threshold is set to 7.0, subject to the
+' the adjustments described next.
+
+' 4. Because the threshold conditions only make sense once the ZLB is
+' binding, unemployment is above its threshold level (lurtrsh),
+' and inflation is below its threshold (pitrsh), which is not the
+' case in the initial simulation quarters, the program turns on the
+' threshold code (using dmptrsh) in the 5th simulation quarter,
+' at which point these conditions hold. In addition, for the threshold 
+' code to work properly, the endogenous switch variable dmptr must be 
+' zero in the quarter prior to the quarter in which the threshold code is 
+' turned on.  This is accomplished by setting the baseline data on dmptr 
+' to zero and by setting the unemployment and inflation thresholds
+' (lurtrsh, pitrsh) to values in the first four simulation quarters that
+' would not flip the dmptr switch to one. 
+
+' 4. Choose one of the five available policy rules by setting
+' %policy to one of rffintay, rfftay, rfftlr, rffalt, or rffgen.
+
+' 5. If neither the ZLB or thresholds are imposed, the monetary policy
+' equations have baseline-tracking adds and the simulation is
+' a standard deviations-from-baseline exercise. 
+
+' 6. If either the ZLB or thresholds are imposed, the add factors on 
+' monetary policy equations are set to zero after the tracking adds
+' are computed so that the ZLB and threshold conditions are based on the
+' actual simulated outcomes for the funds rate and inflation and unemployment,
+' not their deviations from baseline. 
 
 ' *************************************************************
 ' Initial filename and parameter settings
@@ -20,9 +70,8 @@
 
 ' Input database
 %dbin  = "..\data\longbase"
-
 ' Simulation start and length
-  %simstart = "2020q2"
+  %simstart = "2012q3"
   !nsimqtrs = 16*4  
  call dateshift(%simstart,%simend,!nsimqtrs-1)
 
@@ -45,6 +94,9 @@
   smpl @all
   fetch(d=longbase) *
 
+'Add the data on epop and related thresholds
+'{%varmod}.append rgdpch = ((xgdp - xgdp(-4))/ xgdp) * 100
+
 ' Set monetary policy rule
   smpl @all
   %policydmp = @replace(%policy,"rff","dmp")
@@ -65,19 +117,20 @@
       endif
     smpl @all
     call dateshift(%simstart,%quarter4,3)
-
   ' thresholds (dmptrsh and dmptr) not active in first 4 qtrs
+
    smpl %simstart - 1 %quarter4
     dmptrsh = 0
     lurtrsh = -9999
     pitrsh = 9999
     dmptr = 0
-
   ' thresholds (dmptrsh and dmptr) active starting in qtr 5
+
     smpl %quarter4 + 1 %simend
     dmptrsh = 1
     lurtrsh = 6.5
     pitrsh = 2.5
+    'ecitrsh = 3.5
 
     smpl @all
     else
@@ -112,7 +165,7 @@
 
 ' Assign baseline tracking add factors
   %suftrk = "_0"
-  smpl %simstart 2020q2
+  smpl %simstart 2012q3
   {%varmod}.addassign @all
   {%varmod}.addinit(v=n) @all
   {%varmod}.scenario(n,a={%suftrk}) "track"
@@ -144,29 +197,15 @@
 
 
 
-' *************************************************************************************************************
-' Sim 1 : Unanchored inflation expectations - Taylor rule with unrate gap after crossing pitrsh
-' *************************************************************************************************************
+' *************************************************************************************************
+' Simulation 1 : Unanchored inflation expectations Inertial Taylor rule after crossing pitrsh
+' *************************************************************************************************
 
   %sufsim = "_1"
   {%varmod}.scenario(n,a={%sufsim}) "sim"
 
-
-'dmptlr = Monetary policy switch: Taylor's reaction function with unemployment gap
-'RFFTLR: Value of eff. federal funds rate given by the Taylor rule with unemployment gap
-
   smpl @all
-  call set_mp("dmptlr")
-  %policy = "rfftlr"
-
-' Set fiscal policy
-  smpl @all
-  call set_fp("dfpex")
-
-'prt: 10-year expected PCE price inflation (Survey of Professional Forecasters)
-'Increase inflation expectation by 2%
-smpl %simstart %simstart
- ptr_a = ptr_a + .02
+  call set_mp("dmpintay")
 
 
  dmptrsh = 1
@@ -175,66 +214,26 @@ dmptmax = 1
  drstar = 1 'rstar is exogenous
  pitrsh = 2.5
  lurtrsh = 6.5
+'dmpteci = 3
  dmptr = 1
 
   smpl %simstart %simend
   {%varmod}.solve
 
 
-' *******************************************************************************************************
-' Sim 2 : Unanchored inflation expectations and Taylor rule with unrate gap after crossing ecitrsh
-' *******************************************************************************************************
+' *************************************************************************************************
+' Simulation 2 : Unanchored inflation expectations and Taylor rule after crossing pitrsh
+' *************************************************************************************************
 
   %sufsim1 = "_2"
   {%varmod}.scenario(n,a={%sufsim1}) "sim2"
 
   smpl @all
-  call set_mp("dmptlr")
-  %policy = "rfftlr"
+  call set_mp("dmptay")
 
-' Set fiscal policy
-  smpl @all
-  call set_fp("dfpex")
-
-'PTR: 10-year expected PCE price inflation (Survey of Professional Forecasters)
 
 smpl %simstart %simstart
- ptr_a = ptr_a + .02
-
-
-
-
-' Set threshold variables 
-  if %threshold = "yes" then
-    if %zb = "no" then
-      @uiprompt("When policy thresholds are imposed, the zero bound must also be imposed")
-      stop
-      endif
-    smpl @all
-    call dateshift(%simstart,%quarter4,3)
-
-  ' thresholds (dmptrsh and dmptr) not active in first 4 qtrs
-   smpl %simstart - 1 %quarter4
-    dmptrsh = 0
-    lurtrsh = -9999
-    pitrsh = 9999
-    dmptr = 0
-
-  ' thresholds (dmptrsh and dmptr) active starting in qtr 5
-   smpl %quarter4 + 1 %simend
-    dmptrsh = 1
-    dmptmax = 1 
-    rffmin = 0.0 ' impose ZLB
-    lurtrsh = 6.5
-    ecitrsh = 3.5
-   dmpteci = 3
-
-
-    smpl @all
-    else
-    smpl @all
-    dmptrsh = 0
-    endif
+ ptr_a = ptr_a + .05
 
 
 {%varmod}.drop dmptmax 
@@ -248,6 +247,41 @@ smpl %simstart %simstart
 
 
 
+' Set threshold variables 
+  if %threshold = "yes" then
+    if %zb = "no" then
+      @uiprompt("When policy thresholds are imposed, the zero bound must also be imposed")
+      stop
+      endif
+    smpl @all
+    call dateshift(%simstart,%quarter4,3)
+  ' thresholds (dmptrsh and dmptr) not active in first 4 qtrs
+
+   smpl %simstart - 1 %quarter4
+    dmptrsh = 0
+    lurtrsh = -9999
+    pitrsh = 9999
+    dmptr = 0
+  ' thresholds (dmptrsh and dmptr) active starting in qtr 5
+   smpl %quarter4 + 1 %simend
+    dmptrsh = 1
+    dmptmax = 1 
+    rffmin = 0.0 ' impose ZLB
+    lurtrsh = 6.5
+    'pitrsh = 2.5
+    ecitrsh = 3.5
+   dmpteci = 3
+
+
+    smpl @all
+    else
+    smpl @all
+    dmptrsh = 0
+    endif
+
+
+
+
   smpl %simstart %simend
   {%varmod}.solve
 
@@ -257,8 +291,8 @@ smpl %simstart %simstart
 ' Make a graph
 '***********************************************************
 
-  call dateshift(%simstart,%graphstart,-5)
-  call dateshift(%simstart,%graphend, 14)
+  call dateshift(%simstart,%graphstart,-8)
+  call dateshift(%simstart,%graphend, 21)
 
 
 smpl %graphstart %graphend
@@ -269,6 +303,7 @@ smpl %graphstart %graphend
   fig1a.addtext(6.4,-.30,font("arial",13),keep) percent
   fig1a.axis(left) font("arial",15)
   fig1a.axis(bottom) font("arial",15)
+  'fig1a.setelem(1) lcolor(red) lpat(dash1)  legend("(6.5, 2.5) w/ outcome based rule") lwidth(1)
   fig1a.setelem(1) lcolor(black)  legend("Consensus baseline") lwidth(1)
   fig1a.setelem(2) lcolor(green)  legend("PCE rate = 2.5%") lwidth(1)
  fig1a.setelem(3) lcolor(red)  legend(" ECI rate = 3.5%") lwidth(1)
@@ -283,6 +318,7 @@ smpl %graphstart %graphend
   fig1b.addtext(6.4,-.30,font("arial",13),keep) percent
   fig1b.axis(left) font("arial",15)
   fig1b.axis(bottom) font("arial",15)
+  'fig1b.setelem(1) lcolor(red)  lpat(dash1) legend("Outcome based rule") lwidth(1)
   fig1b.setelem(1) lcolor(black) legend("Consensus baseline") lwidth(1)
   fig1b.setelem(2) lcolor(green)  legend("PCE rate = 2.5%") lwidth(1)
  fig1b.setelem(3) lcolor(red)  legend("ECI rate = 3.5%") lwidth(1)
@@ -297,6 +333,7 @@ smpl %graphstart %graphend
   fig1c.addtext(6.4,-.30,font("arial",13),keep) percent
   fig1c.axis(left) font("arial",15)
   fig1c.axis(bottom) font("arial",15)
+  'fig1c.setelem(1) lcolor(red) lpat(dash1) legend("Outcome based rule") lwidth(1)
   fig1c.setelem(1) lcolor(black) legend("Consensus baseline") lwidth(1)
   fig1c.setelem(2) lcolor(green)  legend("PCE rate = 2.5%") lwidth(1)
  fig1c.setelem(3) lcolor(red)  legend("ECI rate = 3.5%") lwidth(1)
@@ -311,6 +348,7 @@ smpl %graphstart %graphend
   fig1d.addtext(6.4,-.30,font("arial",13),keep) percent
   fig1d.axis(left) font("arial",15)
   fig1d.axis(bottom) font("arial",15)
+  'fig1d.setelem(1) lcolor(red) lpat(dash1)  legend("Outcome based rule") lwidth(1)
   fig1d.setelem(1) lcolor(black)  legend("Consensus baseline") lwidth(1)
   fig1d.setelem(2) lcolor(green)  legend("PCE rate = 2.5%") lwidth(1)
  fig1d.setelem(3) lcolor(red)  legend("ECI rate = 3.5%") lwidth(1)
@@ -324,6 +362,7 @@ smpl %graphstart %graphend
   fig1e.addtext(6.4,-.30,font("arial",13),keep) percent
   fig1e.axis(left) font("arial",15)
   fig1e.axis(bottom) font("arial",15)
+  'fig1c.setelem(1) lcolor(red) lpat(dash1) legend("Outcome based rule") lwidth(1)
   fig1e.setelem(1) lcolor(black) legend("Consensus baseline") lwidth(1)
   fig1e.setelem(2) lcolor(green)  legend("PCE rate = 2.5%") lwidth(1)
  fig1e.setelem(3) lcolor(red)  legend("ECI rate = 3.5%") lwidth(1)
@@ -337,6 +376,7 @@ smpl %graphstart %graphend
   fig1f.addtext(6.4,-.30,font("arial",13),keep) percent
   fig1f.axis(left) font("arial",15)
   fig1f.axis(bottom) font("arial",15)
+  'fig1d.setelem(1) lcolor(red) lpat(dash1)  legend("Outcome based rule") lwidth(1)
   fig1f.setelem(1) lcolor(black)  legend("Consensus baseline") lwidth(1)
   fig1f.setelem(2) lcolor(green)  legend("PCE rate = 2.5%") lwidth(1)
  fig1f.setelem(3) lcolor(red)  legend("ECI rate = 3.5%") lwidth(1)
@@ -387,5 +427,11 @@ smpl %graphstart %graphend
  fig1.addtext(t,just(c),font("Arial",20)) {%title}
   fig1.align(2,1,1.25)
   show fig1
+
+
+  'fig1.addtext(b,just(c),font("Arial",16)) Blue:  Actual;  Red:  Simulated
+ ' fig1.align(2,1,1.25)
+  'show fig1
+
 
 
